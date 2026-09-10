@@ -1,0 +1,8 @@
+{
+  "java.import.gradle.enabled": false,
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "java.import.exclusions": [
+    "**/android/**"
+  ],
+  "gradle.nestedProjects": false
+}
