@@ -21,6 +21,7 @@ const walking_1 = require("./engine/walking");
 const ride_start_1 = require("./engine/ride_start");
 const waiting_1 = require("./engine/waiting");
 const mode_1 = require("./engine/mode");
+const metro_arrival_service_1 = require("../metro/metro-arrival.service");
 /// Coerce anything non-numeric/non-finite to a fallback — DB rows can carry
 /// nulls or stray values, and one NaN silently poisons every downstream number.
 function finite(v, fallback = 0) {
@@ -37,8 +38,9 @@ function maxOf(xs) {
     return Number.isFinite(m) ? m : 0;
 }
 let CommuteService = class CommuteService {
-    constructor(ds) {
+    constructor(ds, metroArrivals) {
         this.ds = ds;
+        this.metroArrivals = metroArrivals;
     }
     /// Run the engine on one trip and return the (in-progress) journey.
     async analyze(tripId) {
@@ -117,6 +119,8 @@ let CommuteService = class CommuteService {
                 continue;
             leg.mode = (0, mode_1.classifyMode)(new Date(leg.startedAt).getTime(), new Date(leg.endedAt).getTime(), samples, accel, positions);
         }
+        // Step 1 — metro arrivals (GPS gap resurfacing inside a station geofence).
+        const metroArrivals = await this.metroArrivals.detectArrivals(positions.map((p) => ({ t: p.t, lat: p.lat, lng: p.lng })));
         return {
             tripId: trip.id,
             volunteerCode: trip.volunteer_code,
@@ -125,12 +129,12 @@ let CommuteService = class CommuteService {
             totalMinutes: totalMin,
             gpsSamples: samples.length,
             legs,
-            events: { rideStarts },
+            events: { rideStarts, metroArrivals },
             limitations: [
-                'Track A complete: walking (3), waiting (4), ride-start (5), mode (6).',
-                'mode secondary thresholds (accel/turn/stop) are defaults — need multi-trip calibration.',
-                'underground metro appears as a GPS gap (step 1), not a mode-classified leg.',
-                'no geospatial steps yet (metro arrival / exit gate / office).',
+                'Track A: walking (3), waiting (4), ride-start (5), mode (6).',
+                'Step 1 (metro arrival) live via OSM station geofences.',
+                'mode secondary thresholds are defaults — need multi-trip calibration.',
+                'exit gate (2) and office (7) not built — need collected coordinates.',
                 'validated on ONE trip so far — needs real multi-leg commutes.',
             ],
         };
@@ -152,6 +156,7 @@ exports.CommuteService = CommuteService;
 exports.CommuteService = CommuteService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectDataSource)()),
-    __metadata("design:paramtypes", [typeorm_2.DataSource])
+    __metadata("design:paramtypes", [typeorm_2.DataSource,
+        metro_arrival_service_1.MetroArrivalService])
 ], CommuteService);
 //# sourceMappingURL=commute.service.js.map

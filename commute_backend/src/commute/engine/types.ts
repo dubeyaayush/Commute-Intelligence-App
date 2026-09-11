@@ -37,7 +37,10 @@ export interface Journey {
   totalMinutes: number | null;
   gpsSamples: number;
   legs: Leg[];
-  events: { rideStarts: RideStartEvent[] };
+    events: {
+    rideStarts: RideStartEvent[];
+    metroArrivals: MetroArrivalEvent[];
+  };
   limitations: string[]; // honest notes on what this pass does NOT yet do
 }
 
@@ -68,4 +71,16 @@ export interface RideStartEvent {
   confidence: number; // 0..1
   waitBeforeSeconds: number; // duration of the still leg just before (wait time)
   evidence: { speedScore: number; accelScore: number | null };
+}
+
+export interface MetroArrivalEvent {
+  at: string; // ISO-8601 UTC — when GPS resumed at the station
+  station: string; // station name from OSM
+  confidence: number; // 0..1
+  evidence: {
+    gapDurationSec: number;
+    distanceM: number;
+    radiusM: number;
+    enteredNearStation: boolean;
+  };
 }

@@ -13,13 +13,15 @@ const typeorm_1 = require("@nestjs/typeorm");
 const health_controller_1 = require("./health.controller");
 const ingest_module_1 = require("./ingest/ingest.module");
 const trips_module_1 = require("./trips/trips.module");
+const commute_module_1 = require("./commute/commute.module");
+const metro_module_1 = require("./metro/metro.module");
 const trip_entity_1 = require("./entities/trip.entity");
 const label_entity_1 = require("./entities/label.entity");
 const detected_leg_entity_1 = require("./entities/detected-leg.entity");
 const location_sample_entity_1 = require("./entities/location-sample.entity");
 const sensor_sample_entity_1 = require("./entities/sensor-sample.entity");
 const activity_sample_entity_1 = require("./entities/activity-sample.entity");
-const commute_module_1 = require("./commute/commute.module");
+const metro_station_entity_1 = require("./metro/metro-station.entity");
 const entities = [
     trip_entity_1.Trip,
     label_entity_1.Label,
@@ -27,6 +29,7 @@ const entities = [
     location_sample_entity_1.LocationSample,
     sensor_sample_entity_1.SensorSample,
     activity_sample_entity_1.ActivitySample,
+    metro_station_entity_1.MetroStation,
 ];
 const useSsl = process.env.DB_SSL === "true";
 let AppModule = class AppModule {
@@ -66,6 +69,7 @@ exports.AppModule = AppModule = __decorate([
             ingest_module_1.IngestModule,
             trips_module_1.TripsModule,
             commute_module_1.CommuteModule,
+            metro_module_1.MetroModule,
         ],
         controllers: [health_controller_1.HealthController],
     })

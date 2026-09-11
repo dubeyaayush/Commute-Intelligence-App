@@ -6,6 +6,7 @@ import { scoreWalking } from './engine/walking';
 import { detectRideStarts } from './engine/ride_start';
 import { classifyStill } from './engine/waiting';
 import { classifyMode } from './engine/mode';
+import { MetroArrivalService } from '../metro/metro-arrival.service';
 import {
   AccelSample,
   ActivitySample,
@@ -32,7 +33,10 @@ function maxOf(xs: number[]): number {
 
 @Injectable()
 export class CommuteService {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly metroArrivals: MetroArrivalService,
+  ) {}
 
   /// Run the engine on one trip and return the (in-progress) journey.
   async analyze(tripId: string): Promise<Journey | null> {
@@ -150,6 +154,11 @@ export class CommuteService {
       );
     }
 
+    // Step 1 — metro arrivals (GPS gap resurfacing inside a station geofence).
+    const metroArrivals = await this.metroArrivals.detectArrivals(
+      positions.map((p) => ({ t: p.t, lat: p.lat, lng: p.lng })),
+    );
+
     return {
       tripId: trip.id,
       volunteerCode: trip.volunteer_code,
@@ -158,12 +167,12 @@ export class CommuteService {
       totalMinutes: totalMin,
       gpsSamples: samples.length,
       legs,
-      events: { rideStarts },
+      events: { rideStarts, metroArrivals },
       limitations: [
-        'Track A complete: walking (3), waiting (4), ride-start (5), mode (6).',
-        'mode secondary thresholds (accel/turn/stop) are defaults — need multi-trip calibration.',
-        'underground metro appears as a GPS gap (step 1), not a mode-classified leg.',
-        'no geospatial steps yet (metro arrival / exit gate / office).',
+        'Track A: walking (3), waiting (4), ride-start (5), mode (6).',
+        'Step 1 (metro arrival) live via OSM station geofences.',
+        'mode secondary thresholds are defaults — need multi-trip calibration.',
+        'exit gate (2) and office (7) not built — need collected coordinates.',
         'validated on ONE trip so far — needs real multi-leg commutes.',
       ],
     };

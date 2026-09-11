@@ -4,13 +4,15 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { HealthController } from "./health.controller";
 import { IngestModule } from "./ingest/ingest.module";
 import { TripsModule } from "./trips/trips.module";
+import { CommuteModule } from "./commute/commute.module";
+import { MetroModule } from "./metro/metro.module";
 import { Trip } from "./entities/trip.entity";
 import { Label } from "./entities/label.entity";
 import { DetectedLeg } from "./entities/detected-leg.entity";
 import { LocationSample } from "./entities/location-sample.entity";
 import { SensorSample } from "./entities/sensor-sample.entity";
 import { ActivitySample } from "./entities/activity-sample.entity";
-import { CommuteModule } from './commute/commute.module';
+import { MetroStation } from "./metro/metro-station.entity";
 
 const entities = [
   Trip,
@@ -19,6 +21,7 @@ const entities = [
   LocationSample,
   SensorSample,
   ActivitySample,
+  MetroStation,
 ];
 
 const useSsl = process.env.DB_SSL === "true";
@@ -58,7 +61,9 @@ const useSsl = process.env.DB_SSL === "true";
     IngestModule,
     TripsModule,
     CommuteModule,
+    MetroModule,
   ],
   controllers: [HealthController],
 })
+
 export class AppModule {}
