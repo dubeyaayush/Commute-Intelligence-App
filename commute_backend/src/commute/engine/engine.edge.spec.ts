@@ -9,6 +9,7 @@ import {
   LegKind,
   PositionSample,
   RawSample,
+  ActivitySample,
 } from './types';
 
 // --- helpers ---
@@ -31,6 +32,30 @@ function leg(kind: LegKind, startSec: number, endSec: number): Leg {
 // ============================================================
 // Step 5 — ride-start
 // ============================================================
+
+describe('segmentation — activity fusion', () => {
+  it('keeps a continuous ride as one leg despite a GPS dip when activity says IN_VEHICLE', () => {
+    const samples: RawSample[] = [];
+    let t = 0;
+    const push = (n: number, speed: number) => {
+      for (let k = 0; k < n; k++) samples.push({ t: t++ * 1000, speed });
+    };
+    push(120, 8); // riding
+    push(27, 0.2); // GPS dip mid-ride
+    push(120, 8); // riding again
+
+    const gpsOnly = segment(samples); // no activity → splits on the dip
+    expect(gpsOnly.length).toBeGreaterThan(1);
+
+    const activity: ActivitySample[] = [];
+    for (let k = 0; k < 267; k += 10) {
+      activity.push({ t: k * 1000, type: 'IN_VEHICLE', conf: 'HIGH' });
+    }
+    const fused = segment(samples, activity); // activity holds it together
+    expect(fused).toHaveLength(1);
+    expect(fused[0].state).toBe('moving');
+  });
+});
 
 describe('ride-start (step 5)', () => {
   const accel: AccelSample[] = [];
@@ -140,3 +165,4 @@ describe('hardening: degenerate inputs degrade gracefully', () => {
     expect(() => classifyMode(0, 60_000_000, spd, acc, noPos)).not.toThrow();
   });
 });
+

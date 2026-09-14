@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme.dart';
-import 'home_screen.dart';
+import 'auth_screen.dart';
 
 class ConsentScreen extends StatefulWidget {
   const ConsentScreen({super.key});
@@ -11,30 +11,21 @@ class ConsentScreen extends StatefulWidget {
 }
 
 class _ConsentScreenState extends State<ConsentScreen> {
-  final _codeController = TextEditingController();
   bool _agreed = false;
   bool _saving = false;
 
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
-  }
-
-  bool get _canContinue =>
-      _agreed && _codeController.text.trim().isNotEmpty && !_saving;
+  bool get _canContinue => _agreed && !_saving;
 
   Future<void> _continue() async {
     setState(() => _saving = true);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('consent_given', true);
-    await prefs.setString('volunteer_code', _codeController.text.trim());
     await prefs.setString(
         'consented_at', DateTime.now().toUtc().toIso8601String());
 
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
     );
   }
 
@@ -68,7 +59,8 @@ class _ConsentScreenState extends State<ConsentScreen> {
             Text(
               'This app records your phone’s location and motion sensors during '
               'your commute, so we can study how multi-leg journeys '
-              '(home → metro → last mile → office) can be reconstructed.',
+              '(home → metro → last mile → office) can be reconstructed. '
+              'We also store the name and contact details you provide at sign-up.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: Colors.grey.shade700, height: 1.4),
@@ -81,20 +73,6 @@ class _ConsentScreenState extends State<ConsentScreen> {
             _point(Icons.volunteer_activism_outlined,
                 'Taking part is voluntary — you can stop at any time.'),
             Gap.l,
-            TextField(
-              controller: _codeController,
-              decoration: InputDecoration(
-                labelText: 'Volunteer code',
-                hintText: 'e.g. V-017',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              textCapitalization: TextCapitalization.characters,
-              onChanged: (_) => setState(() {}),
-            ),
-            Gap.s,
             CheckboxListTile(
               value: _agreed,
               onChanged: (v) => setState(() => _agreed = v ?? false),

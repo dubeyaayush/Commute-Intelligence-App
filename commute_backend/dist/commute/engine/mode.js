@@ -4,9 +4,9 @@ exports.classifyMode = classifyMode;
 const config_1 = require("./config");
 /// Step 6 — transport-mode classification for a moving (vehicle) leg. Speed
 /// (median + p85) is the backbone; accel roughness, turn rate, and stop fraction
-/// are lightly-weighted nudges. All thresholds/bands/nudges live in config.
-/// NOTE: fully-underground metro shows up as a GPS *gap*, not a leg — step 1's
-/// job. Here 'metro' means an elevated, fast, straight, stopless leg.
+/// are lightly-weighted nudges. The engine computes which mode it LEANS toward,
+/// but only NAMES a specific mode when confidence clears CONFIG.mode.nameConfidence
+/// — otherwise it reports 'vehicle'. Naming is off by default until calibration.
 const C = config_1.CONFIG.mode;
 function classifyMode(legStart, legEnd, samples, accel, positions) {
     const durSec = Math.max(1, (legEnd - legStart) / 1000);
@@ -18,14 +18,12 @@ function classifyMode(legStart, legEnd, samples, accel, positions) {
     const accelMad = mad(mags);
     const turnPerMin = turnRate(pts) / (durSec / 60);
     const stopFrac = kmh.length ? kmh.filter((s) => s < 2).length / kmh.length : 0;
-    // speed fit per mode, from config bands
     const speedFit = {};
     for (const [mode, b] of Object.entries(C.bands)) {
         speedFit[mode] =
             C.speedWeights.median * trap(med, b.med[0], b.med[1], b.med[2], b.med[3]) +
                 C.speedWeights.p85 * trap(p85, b.p85[0], b.p85[1], b.p85[2], b.p85[3]);
     }
-    // gentle secondary nudges, from config
     const nudge = {};
     for (const m of Object.keys(C.bands))
         nudge[m] = 1;
@@ -44,18 +42,22 @@ function classifyMode(legStart, legEnd, samples, accel, positions) {
         sum += raw[k];
     }
     const scores = {};
-    let best = 'car';
+    let lean = 'car';
     let bestScore = -1;
     for (const k of Object.keys(raw)) {
         scores[k] = sum > 0 ? +(raw[k] / sum).toFixed(2) : 0;
         if (raw[k] > bestScore) {
             bestScore = raw[k];
-            best = k;
+            lean = k;
         }
     }
+    const confidence = sum > 0 ? +(raw[lean] / sum).toFixed(2) : 0;
+    // Only commit to a specific mode when confident enough; else stay 'vehicle'.
+    const label = confidence >= C.nameConfidence ? lean : 'vehicle';
     return {
-        label: best,
-        confidence: sum > 0 ? +(raw[best] / sum).toFixed(2) : 0,
+        label,
+        lean,
+        confidence,
         scores,
         features: {
             medKmh: +med.toFixed(1),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'theme.dart';
 import 'screens/consent_screen.dart';
+import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 
 void main() => runApp(const CommuteCollectorApp());
@@ -20,7 +21,8 @@ class CommuteCollectorApp extends StatelessWidget {
   }
 }
 
-/// Decides on launch whether to show consent or home.
+/// On launch: not consented → consent; consented but no code → login;
+/// otherwise → home. Keeps consent a one-time step and login repeatable.
 class GateScreen extends StatefulWidget {
   const GateScreen({super.key});
 
@@ -31,20 +33,22 @@ class GateScreen extends StatefulWidget {
 class _GateScreenState extends State<GateScreen> {
   bool _loading = true;
   bool _consented = false;
+  bool _loggedIn = false;
 
   @override
   void initState() {
     super.initState();
-    _checkConsent();
+    _check();
   }
 
-  Future<void> _checkConsent() async {
+  Future<void> _check() async {
     final prefs = await SharedPreferences.getInstance();
     final consented = prefs.getBool('consent_given') ?? false;
     final code = prefs.getString('volunteer_code');
     if (!mounted) return;
     setState(() {
-      _consented = consented && code != null && code.isNotEmpty;
+      _consented = consented;
+      _loggedIn = code != null && code.isNotEmpty;
       _loading = false;
     });
   }
@@ -54,6 +58,8 @@ class _GateScreenState extends State<GateScreen> {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    return _consented ? const HomeScreen() : const ConsentScreen();
+    if (!_consented) return const ConsentScreen();
+    if (!_loggedIn) return const AuthScreen();
+    return const HomeScreen();
   }
 }

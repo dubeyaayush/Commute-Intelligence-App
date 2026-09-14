@@ -76,7 +76,7 @@ let CommuteService = class CommuteService {
             t: new Date(r.t).getTime(),
             mag: Math.sqrt(finite(r.x) ** 2 + finite(r.y) ** 2 + finite(r.z) ** 2),
         }));
-        const runs = (0, segmentation_1.segment)(samples);
+        const runs = (0, segmentation_1.segment)(samples, activity);
         const legs = runs.map((run) => {
             const seg = samples.filter((s) => s.t >= run.startT && s.t <= run.endT);
             const speeds = seg.length ? seg.map((s) => s.speed) : [0];

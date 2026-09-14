@@ -1,17 +1,20 @@
 /// Shared types for the Commute Intelligence Engine outputs.
 
 export type LegKind = 'walking' | 'moving' | 'waiting' | 'stopped';
-// 'walking'/'moving' = motion (step 3 / step 6). 'waiting' = a pause between
-// movement (step 4). 'stopped' = a still at the trip's edge (origin/destination).
 
 export interface LegMode {
-  label: 'e-rickshaw' | 'car' | 'metro';
-  confidence: number; // 0..1 = normalized share of the winning mode
-  scores: Record<string, number>; // per-mode normalized scores
+  // Reported mode. 'vehicle' = the engine will not commit to a specific mode
+  // (naming is disabled until calibration). Otherwise a specific mode.
+  label: 'vehicle' | 'e-rickshaw' | 'car' | 'metro';
+  // Best guess regardless of the naming threshold — always one of the three.
+  // Visible for tuning: "vehicle (leaning car)".
+  lean: 'e-rickshaw' | 'car' | 'metro';
+  confidence: number; // 0..1 = normalized share of the leaning mode
+  scores: Record<string, number>;
   features: {
     medKmh: number;
     p85Kmh: number;
-    accelMad: number; // robust accel roughness (m/s^2)
+    accelMad: number;
     turnPerMin: number;
     stopFrac: number;
   };
@@ -19,14 +22,14 @@ export interface LegMode {
 
 export interface Leg {
   kind: LegKind;
-  startedAt: string; // ISO-8601 UTC
+  startedAt: string;
   endedAt: string;
   seconds: number;
   medianSpeedKmh: number;
   maxSpeedKmh: number;
-  confidence: number | null; // 0..1 for classified legs; null for edge stops
-  evidence?: Record<string, number | null | boolean>; // signals behind the score
-  mode?: LegMode; // present only on 'moving' (vehicle) legs — step 6
+  confidence: number | null;
+  evidence?: Record<string, number | null | boolean>;
+  mode?: LegMode;
 }
 
 export interface Journey {
@@ -37,46 +40,46 @@ export interface Journey {
   totalMinutes: number | null;
   gpsSamples: number;
   legs: Leg[];
-    events: {
+  events: {
     rideStarts: RideStartEvent[];
     metroArrivals: MetroArrivalEvent[];
   };
-  limitations: string[]; // honest notes on what this pass does NOT yet do
+  limitations: string[];
 }
 
 export interface RawSample {
-  t: number; // epoch ms
-  speed: number; // m/s, clamped >= 0
+  t: number;
+  speed: number;
 }
 
 export interface ActivitySample {
-  t: number; // epoch ms
-  type: string; // WALKING / IN_VEHICLE / STILL / ...
-  conf: string; // HIGH / MEDIUM / LOW
+  t: number;
+  type: string;
+  conf: string;
 }
 
 export interface AccelSample {
-  t: number; // epoch ms
-  mag: number; // acceleration magnitude in m/s^2 (includes gravity ~9.8)
+  t: number;
+  mag: number;
 }
 
 export interface PositionSample {
-  t: number; // epoch ms
+  t: number;
   lat: number;
   lng: number;
 }
 
 export interface RideStartEvent {
-  at: string; // ISO-8601 UTC — the moment the ride began
-  confidence: number; // 0..1
-  waitBeforeSeconds: number; // duration of the still leg just before (wait time)
+  at: string;
+  confidence: number;
+  waitBeforeSeconds: number;
   evidence: { speedScore: number; accelScore: number | null };
 }
 
 export interface MetroArrivalEvent {
-  at: string; // ISO-8601 UTC — when GPS resumed at the station
-  station: string; // station name from OSM
-  confidence: number; // 0..1
+  at: string;
+  station: string;
+  confidence: number;
   evidence: {
     gapDurationSec: number;
     distanceM: number;

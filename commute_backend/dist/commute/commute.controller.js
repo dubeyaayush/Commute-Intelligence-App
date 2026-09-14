@@ -19,15 +19,20 @@ let CommuteController = class CommuteController {
     constructor(commute) {
         this.commute = commute;
     }
-    // GET /commute/<id>?key=<API_KEY>  — engine output as JSON (browser-openable)
+    // GET /commute/<tripId>
+    // The app's read endpoint: returns the engine's full journey reconstruction
+    // (legs, modes, ride-starts, metro arrivals, confidences).
+    // Auth via the x-api-key header (what the Flutter app sends) OR ?key= in the
+    // query (convenient for opening in a browser while debugging).
     async analyze(id, req) {
         const provided = req.headers['x-api-key'] ?? req.query.key;
         if (!process.env.API_KEY || provided !== process.env.API_KEY) {
             throw new common_1.UnauthorizedException('Invalid or missing API key');
         }
         const journey = await this.commute.analyze(id);
+        // 404 (not 401) so a client can tell "no such trip" from "bad key".
         if (!journey)
-            throw new common_1.UnauthorizedException('Trip not found'); // keep it simple for now
+            throw new common_1.NotFoundException(`Trip ${id} not found`);
         return journey;
     }
 };

@@ -86,7 +86,7 @@ export class CommuteService {
       mag: Math.sqrt(finite(r.x) ** 2 + finite(r.y) ** 2 + finite(r.z) ** 2),
     }));
 
-    const runs = segment(samples);
+    const runs = segment(samples, activity);
 
     const legs: Leg[] = runs.map((run) => {
       const seg = samples.filter((s) => s.t >= run.startT && s.t <= run.endT);

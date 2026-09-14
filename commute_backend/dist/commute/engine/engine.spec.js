@@ -3,25 +3,22 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const segmentation_1 = require("./segmentation");
 const walking_1 = require("./walking");
 const mode_1 = require("./mode");
-// --- deterministic fixture builders (1 Hz, no randomness) ---
-/** Append `n` samples at `speed` (m/s) starting at second `startSec`. */
 function pushSpeed(arr, startSec, n, speed) {
     for (let k = 0; k < n; k++)
         arr.push({ t: (startSec + k) * 1000, speed });
 }
-/** The doc's scenario: home → walk → wait → ride → office. */
 function docScenario() {
     const s = [];
     let sec = 0;
     pushSpeed(s, sec, 40, 0.1);
-    sec += 40; // home still
+    sec += 40;
     pushSpeed(s, sec, 90, 1.3);
-    sec += 90; // walk (~4.7 km/h)
+    sec += 90;
     pushSpeed(s, sec, 120, 0.0);
-    sec += 120; // wait
+    sec += 120;
     pushSpeed(s, sec, 300, 8.0);
-    sec += 300; // vehicle (~28.8 km/h)
-    pushSpeed(s, sec, 60, 0.1); // office still
+    sec += 300;
+    pushSpeed(s, sec, 60, 0.1);
     return s;
 }
 const flatAccel = (n) => Array.from({ length: n }, (_, k) => ({ t: k * 1000, mag: 9.8 }));
@@ -31,7 +28,6 @@ const straightPath = (kmh, n = 300) => Array.from({ length: n }, (_, k) => ({
     lat: 28.6 + (k * (kmh / 3.6)) / 111000,
     lng: 77.2,
 }));
-// --- tests ---
 describe('segmentation', () => {
     it('splits the doc scenario into 5 alternating runs', () => {
         const runs = (0, segmentation_1.segment)(docScenario());
@@ -62,17 +58,22 @@ describe('walking (step 3)', () => {
     });
 });
 describe('mode (step 6)', () => {
-    it('classifies a ~18 km/h leg as e-rickshaw', () => {
+    // Naming is OFF by default (nameConfidence 1.01), so `label` stays 'vehicle';
+    // `lean` still shows which mode the sensors point to — that's what discriminates.
+    it('leans e-rickshaw at ~18 km/h, but reports "vehicle" (naming off)', () => {
         const m = (0, mode_1.classifyMode)(0, 300_000, constSpeed(18), flatAccel(300), straightPath(18));
-        expect(m.label).toBe('e-rickshaw');
+        expect(m.lean).toBe('e-rickshaw');
+        expect(m.label).toBe('vehicle');
     });
-    it('classifies a ~38 km/h leg as car', () => {
+    it('leans car at ~38 km/h, but reports "vehicle" (naming off)', () => {
         const m = (0, mode_1.classifyMode)(0, 300_000, constSpeed(38), flatAccel(300), straightPath(38));
-        expect(m.label).toBe('car');
+        expect(m.lean).toBe('car');
+        expect(m.label).toBe('vehicle');
     });
-    it('classifies a ~62 km/h leg as metro', () => {
+    it('leans metro at ~62 km/h, but reports "vehicle" (naming off)', () => {
         const m = (0, mode_1.classifyMode)(0, 300_000, constSpeed(62), flatAccel(300), straightPath(62));
-        expect(m.label).toBe('metro');
+        expect(m.lean).toBe('metro');
+        expect(m.label).toBe('vehicle');
     });
 });
 //# sourceMappingURL=engine.spec.js.map

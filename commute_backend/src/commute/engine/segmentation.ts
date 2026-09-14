@@ -1,22 +1,34 @@
-import { RawSample } from './types';
+import { ActivitySample, RawSample } from './types';
 import { CONFIG } from './config';
 
-/// v1 leg segmentation: split a trip into moving vs still stretches from GPS
-/// speed, robust to noise. Speed is m/s (geolocator native). Thresholds: config.
+/// Leg segmentation: split a trip into moving vs still stretches. GPS speed is
+/// the base signal (median-smoothed + hysteresis), but a CONFIDENT motion
+/// reading from the phone's activity stream (e.g. IN_VEHICLE HIGH) forces the
+/// sample to "moving" — this keeps a continuous ride from being split by brief
+/// GPS speed dips (slowdowns, turns, signal wobble), matching the on-device
+/// detector's boundaries. All thresholds live in config.
 const C = CONFIG.segmentation;
+const MOTION = new Set(CONFIG.activityFusion.motionTypes);
+const CONFIDENT = new Set(CONFIG.activityFusion.confidentLevels);
 
 type Run = { state: 'moving' | 'still'; startT: number; endT: number; samples: number };
 
-export function segment(samples: RawSample[]): Run[] {
+export function segment(samples: RawSample[], activity: ActivitySample[] = []): Run[] {
   if (samples.length < 2) return [];
   const sm = smooth(samples);
+  const forceMoving = resolveMotion(samples, activity);
 
   const states: Array<'moving' | 'still'> = [];
   let state: 'moving' | 'still' = sm[0] > C.enterMoveMs ? 'moving' : 'still';
   for (let i = 0; i < sm.length; i++) {
+    // GPS hysteresis
     if (state === 'still' && sm[i] > C.enterMoveMs) state = 'moving';
     else if (state === 'moving' && sm[i] < C.exitMoveMs) state = 'still';
-    states.push(state);
+    // Activity override: a confident motion reading keeps us moving through a
+    // GPS dip. Carry the resolved state forward so hysteresis stays consistent.
+    const resolved: 'moving' | 'still' = forceMoving[i] ? 'moving' : state;
+    states.push(resolved);
+    state = resolved;
   }
 
   let runs: Run[] = [];
@@ -32,6 +44,26 @@ export function segment(samples: RawSample[]): Run[] {
   return absorbShort(runs);
 }
 
+/// For each GPS sample, is the prevailing activity a confident motion reading?
+/// Activity is event-driven (emits on change, persists until the next), so the
+/// reading in effect at time t is the last one at or before t.
+function resolveMotion(samples: RawSample[], activity: ActivitySample[]): boolean[] {
+  const out = new Array(samples.length).fill(false);
+  if (activity.length === 0) return out;
+  let ai = 0;
+  let current: ActivitySample | null = null;
+  for (let i = 0; i < samples.length; i++) {
+    while (ai < activity.length && activity[ai].t <= samples[i].t) {
+      current = activity[ai];
+      ai++;
+    }
+    if (current && MOTION.has(current.type) && CONFIDENT.has(current.conf)) {
+      out[i] = true;
+    }
+  }
+  return out;
+}
+
 function absorbShort(runs: Run[]): Run[] {
   let changed = true;
   while (changed && runs.length > 1) {
@@ -40,7 +72,7 @@ function absorbShort(runs: Run[]): Run[] {
       if ((runs[i].endT - runs[i].startT) / 1000 >= C.minLegSec) continue;
       if (i > 0 && i < runs.length - 1) {
         const merged: Run = {
-          state: runs[i - 1].state, // interior slivers sit between same-state runs
+          state: runs[i - 1].state,
           startT: runs[i - 1].startT,
           endT: runs[i + 1].endT,
           samples: runs[i - 1].samples + runs[i].samples + runs[i + 1].samples,
@@ -65,7 +97,7 @@ function absorbShort(runs: Run[]): Run[] {
 }
 
 function smooth(samples: RawSample[]): number[] {
-  const half = (CONFIG.segmentation.smoothWindowSec * 1000) / 2;
+  const half = (C.smoothWindowSec * 1000) / 2;
   return samples.map((s, i) => {
     const win: number[] = [];
     for (let j = i; j >= 0 && s.t - samples[j].t <= half; j--) win.push(samples[j].speed);

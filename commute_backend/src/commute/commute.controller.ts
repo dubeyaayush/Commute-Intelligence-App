@@ -1,11 +1,22 @@
-import { Controller, Get, Param, Req, UnauthorizedException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Req,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { CommuteService } from './commute.service';
 
 @Controller('commute')
 export class CommuteController {
   constructor(private readonly commute: CommuteService) {}
 
-  // GET /commute/<id>?key=<API_KEY>  — engine output as JSON (browser-openable)
+  // GET /commute/<tripId>
+  // The app's read endpoint: returns the engine's full journey reconstruction
+  // (legs, modes, ride-starts, metro arrivals, confidences).
+  // Auth via the x-api-key header (what the Flutter app sends) OR ?key= in the
+  // query (convenient for opening in a browser while debugging).
   @Get(':id')
   async analyze(@Param('id') id: string, @Req() req: any) {
     const provided = req.headers['x-api-key'] ?? req.query.key;
@@ -13,7 +24,8 @@ export class CommuteController {
       throw new UnauthorizedException('Invalid or missing API key');
     }
     const journey = await this.commute.analyze(id);
-    if (!journey) throw new UnauthorizedException('Trip not found'); // keep it simple for now
+    // 404 (not 401) so a client can tell "no such trip" from "bad key".
+    if (!journey) throw new NotFoundException(`Trip ${id} not found`);
     return journey;
   }
 }

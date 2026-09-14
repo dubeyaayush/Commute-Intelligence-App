@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config.dart';
 import '../repositories/capture_repository.dart';
 import '../services/upload_service.dart';
 
 /// Owns upload state: the server URL, pending count, and the upload loop.
-/// Separate from CaptureController so neither file gets heavy.
 class UploadController extends ChangeNotifier {
   UploadController({
     required CaptureRepository repository,
@@ -13,7 +13,7 @@ class UploadController extends ChangeNotifier {
        _injectedUploader = uploader;
 
   final CaptureRepository _repo;
-  final UploadService? _injectedUploader; // for tests
+  final UploadService? _injectedUploader;
 
   String? _serverUrl;
   String? _apiKey;
@@ -22,8 +22,9 @@ class UploadController extends ChangeNotifier {
   String? _error;
   int _pending = 0;
 
-  String? get serverUrl => _serverUrl;
-  String? get apiKey => _apiKey;
+  // Resolve to the baked-in default when nothing is set in prefs.
+  String get serverUrl => _serverUrl ?? AppConfig.defaultServerUrl;
+  String get apiKey => _apiKey ?? AppConfig.defaultApiKey;
   bool get uploading => _uploading;
   String? get status => _status;
   String? get error => _error;
@@ -67,20 +68,13 @@ class UploadController extends ChangeNotifier {
 
   Future<void> uploadPending() async {
     if (_uploading) return;
-    final url = _serverUrl;
-    if (url == null || url.isEmpty) {
-      _error = 'Set the server URL first.';
-      notifyListeners();
-      return;
-    }
-
     _uploading = true;
     _error = null;
     _status = null;
     notifyListeners();
 
     final uploader =
-        _injectedUploader ?? UploadService(baseUrl: url, apiKey: _apiKey);
+        _injectedUploader ?? UploadService(baseUrl: serverUrl, apiKey: apiKey);
     try {
       final tripIds = await _repo.unuploadedTrips();
       var ok = 0;
@@ -93,7 +87,7 @@ class UploadController extends ChangeNotifier {
       }
       _status = ok == 0 ? 'Nothing to upload.' : 'Uploaded $ok trip(s).';
     } catch (e) {
-      _error = e.toString(); // stops on first failure; rest stay pending
+      _error = e.toString();
     } finally {
       _uploading = false;
       notifyListeners();

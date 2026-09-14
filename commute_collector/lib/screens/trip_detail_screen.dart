@@ -4,19 +4,24 @@ import '../models/label.dart';
 import '../models/detected_leg.dart';
 import '../repositories/capture_repository.dart';
 import '../widgets/journey_timeline.dart';
+import '../widgets/journey_analysis_section.dart';
 import '../widgets/mode_visuals.dart';
 
-/// Read-only view of one completed trip: summary stats + both timelines.
-/// Used after Stop and from My Trips. Loads legs from the database by trip id.
+/// Read-only view of one completed trip: summary stats + both local timelines,
+/// plus the backend engine's reconstruction (fetched on demand).
 class TripDetailScreen extends StatefulWidget {
   const TripDetailScreen({
     super.key,
     required this.repository,
     required this.tripId,
+    this.baseUrl,
+    this.apiKey,
   });
 
   final CaptureRepository repository;
   final String tripId;
+  final String? baseUrl; // server config (from UploadController) for analysis
+  final String? apiKey;
 
   @override
   State<TripDetailScreen> createState() => _TripDetailScreenState();
@@ -69,6 +74,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                         start: _trip!.startedAt,
                         labels: _labels,
                         detectedLegs: _detected,
+                      ),
+                      const SizedBox(height: 16),
+                      JourneyAnalysisSection(
+                        tripId: widget.tripId,
+                        baseUrl: widget.baseUrl,
+                        apiKey: widget.apiKey,
+                        uploaded: _trip!.uploaded,
                       ),
                       const SizedBox(height: 16),
                       SizedBox(

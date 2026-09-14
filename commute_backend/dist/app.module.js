@@ -15,6 +15,7 @@ const ingest_module_1 = require("./ingest/ingest.module");
 const trips_module_1 = require("./trips/trips.module");
 const commute_module_1 = require("./commute/commute.module");
 const metro_module_1 = require("./metro/metro.module");
+const volunteers_module_1 = require("./volunteers/volunteers.module");
 const trip_entity_1 = require("./entities/trip.entity");
 const label_entity_1 = require("./entities/label.entity");
 const detected_leg_entity_1 = require("./entities/detected-leg.entity");
@@ -22,6 +23,7 @@ const location_sample_entity_1 = require("./entities/location-sample.entity");
 const sensor_sample_entity_1 = require("./entities/sensor-sample.entity");
 const activity_sample_entity_1 = require("./entities/activity-sample.entity");
 const metro_station_entity_1 = require("./metro/metro-station.entity");
+const volunteer_entity_1 = require("./volunteers/volunteer.entity");
 const entities = [
     trip_entity_1.Trip,
     label_entity_1.Label,
@@ -30,6 +32,7 @@ const entities = [
     sensor_sample_entity_1.SensorSample,
     activity_sample_entity_1.ActivitySample,
     metro_station_entity_1.MetroStation,
+    volunteer_entity_1.Volunteer,
 ];
 const useSsl = process.env.DB_SSL === "true";
 let AppModule = class AppModule {
@@ -38,24 +41,19 @@ exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            // Loads .env into process.env so the app works when run directly (no Docker).
             config_1.ConfigModule.forRoot({ isGlobal: true }),
             typeorm_1.TypeOrmModule.forRoot(process.env.DATABASE_URL
                 ? {
-                    // Hosted Postgres (Neon): single connection URL + SSL.
                     type: "postgres",
                     url: process.env.DATABASE_URL,
                     ssl: useSsl ? { rejectUnauthorized: false } : false,
                     extra: {
-                        // Force node-postgres to use the ssl object above and not
-                        // infer "no SSL" from the connection string.
                         ssl: useSsl ? { rejectUnauthorized: false } : false,
                     },
                     entities,
-                    synchronize: true, // dev only: auto-creates the tables above
+                    synchronize: true,
                 }
                 : {
-                    // Local / Docker Postgres: discrete connection fields.
                     type: "postgres",
                     host: process.env.DB_HOST ?? "localhost",
                     port: parseInt(process.env.DB_PORT ?? "5432", 10),
@@ -64,12 +62,13 @@ exports.AppModule = AppModule = __decorate([
                     database: process.env.DB_NAME ?? "commute",
                     ssl: useSsl ? { rejectUnauthorized: false } : false,
                     entities,
-                    synchronize: true, // dev only: auto-creates the tables above
+                    synchronize: true,
                 }),
             ingest_module_1.IngestModule,
             trips_module_1.TripsModule,
             commute_module_1.CommuteModule,
             metro_module_1.MetroModule,
+            volunteers_module_1.VolunteersModule,
         ],
         controllers: [health_controller_1.HealthController],
     })

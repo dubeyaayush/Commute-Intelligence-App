@@ -10,10 +10,14 @@ class MyTripsScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.volunteerCode,
+    this.baseUrl,
+    this.apiKey,
   });
 
   final CaptureRepository repository;
   final String volunteerCode;
+  final String? baseUrl; // server config, threaded into TripDetailScreen
+  final String? apiKey;
 
   @override
   State<MyTripsScreen> createState() => _MyTripsScreenState();
@@ -42,7 +46,11 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
   Future<void> _open(Trip t) async {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => TripDetailScreen(
-          repository: widget.repository, tripId: t.id),
+        repository: widget.repository,
+        tripId: t.id,
+        baseUrl: widget.baseUrl,
+        apiKey: widget.apiKey,
+      ),
     ));
     _load(); // refresh (e.g. uploaded flag may have changed elsewhere)
   }
