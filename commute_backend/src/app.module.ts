@@ -15,6 +15,7 @@ import { SensorSample } from "./entities/sensor-sample.entity";
 import { ActivitySample } from "./entities/activity-sample.entity";
 import { MetroStation } from "./metro/metro-station.entity";
 import { Volunteer } from "./volunteers/volunteer.entity";
+import { TripAnalysis } from "./commute/trip-analysis.entity";
 
 const entities = [
   Trip,
@@ -25,6 +26,7 @@ const entities = [
   ActivitySample,
   MetroStation,
   Volunteer,
+  TripAnalysis,
 ];
 
 const useSsl = process.env.DB_SSL === "true";

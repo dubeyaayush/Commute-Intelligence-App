@@ -7,5 +7,6 @@ import { CommuteService } from './commute.service';
   imports: [MetroModule],
   controllers: [CommuteController],
   providers: [CommuteService],
+  exports: [CommuteService], // used by IngestModule for post-ingest analysis
 })
 export class CommuteModule {}
