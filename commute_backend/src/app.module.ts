@@ -16,6 +16,7 @@ import { ActivitySample } from "./entities/activity-sample.entity";
 import { MetroStation } from "./metro/metro-station.entity";
 import { Volunteer } from "./volunteers/volunteer.entity";
 import { TripAnalysis } from "./commute/trip-analysis.entity";
+import { AdminModule } from "./admin/admin.module";
 
 const entities = [
   Trip,
@@ -63,6 +64,12 @@ const useSsl = process.env.DB_SSL === "true";
     CommuteModule,
     MetroModule,
     VolunteersModule,
+    IngestModule,
+    TripsModule,
+    CommuteModule,
+    MetroModule,
+    VolunteersModule,
+    AdminModule,
   ],
   controllers: [HealthController],
 })
