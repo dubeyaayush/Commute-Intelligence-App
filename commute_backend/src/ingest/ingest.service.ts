@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Trip } from '../entities/trip.entity';
@@ -7,14 +7,21 @@ import { DetectedLeg } from '../entities/detected-leg.entity';
 import { LocationSample } from '../entities/location-sample.entity';
 import { SensorSample } from '../entities/sensor-sample.entity';
 import { ActivitySample } from '../entities/activity-sample.entity';
+import { CommuteService } from '../commute/commute.service';
 
 @Injectable()
 export class IngestService {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  private readonly log = new Logger('IngestService');
+
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly commute: CommuteService,
+  ) {}
 
   /// Store one trip + all its rows in ONE transaction. Idempotent on trip id:
   /// re-uploading the same trip clears the old copy first, so a retried upload
-  /// never creates duplicates.
+  /// never creates duplicates. After the raw data is safely stored, the engine
+  /// analysis is computed and persisted (best-effort — never fails the upload).
   async ingest(body: any) {
     const trip = body.trip;
     const tripId = trip.id as string;
@@ -28,7 +35,6 @@ export class IngestService {
     };
 
     await this.ds.transaction(async (m) => {
-      // idempotency: remove any prior copy of this trip's children
       for (const table of [
         'labels',
         'detected_legs',
@@ -39,7 +45,6 @@ export class IngestService {
         await m.query(`DELETE FROM ${table} WHERE trip_id = $1`, [tripId]);
       }
 
-      // upsert the trip row
       await m
         .createQueryBuilder()
         .insert()
@@ -81,7 +86,6 @@ export class IngestService {
         );
       }
 
-      // location samples: build the PostGIS point from lng/lat, in chunks
       if (counts.location_samples) {
         const rows = body.location_samples.map((s: any) => ({
           tripId: s.trip_id,
@@ -127,6 +131,16 @@ export class IngestService {
         );
       }
     });
+
+    // Raw data is now safely stored. Compute + persist the engine analysis as a
+    // best-effort step — a failure here must NOT fail the upload.
+    if (trip.ended_at) {
+      try {
+        await this.commute.analyzeAndStore(tripId);
+      } catch (e: any) {
+        this.log.warn(`analysis failed for ${tripId}: ${e?.message ?? e}`);
+      }
+    }
 
     return { ok: true, trip_id: tripId, received: counts };
   }

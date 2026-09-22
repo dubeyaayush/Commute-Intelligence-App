@@ -5,7 +5,7 @@
 class AppConfig {
   static const String defaultServerUrl = String.fromEnvironment(
     'SERVER_URL',
-    defaultValue: 'https://commute-intelligence-app.onrender.com',
+    defaultValue: 'https://commute-collector-app.onrender.com',
   );
 
   static const String defaultApiKey = String.fromEnvironment(
