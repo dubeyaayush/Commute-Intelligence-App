@@ -24,6 +24,7 @@ const sensor_sample_entity_1 = require("./entities/sensor-sample.entity");
 const activity_sample_entity_1 = require("./entities/activity-sample.entity");
 const metro_station_entity_1 = require("./metro/metro-station.entity");
 const volunteer_entity_1 = require("./volunteers/volunteer.entity");
+const trip_analysis_entity_1 = require("./commute/trip-analysis.entity");
 const entities = [
     trip_entity_1.Trip,
     label_entity_1.Label,
@@ -33,6 +34,7 @@ const entities = [
     activity_sample_entity_1.ActivitySample,
     metro_station_entity_1.MetroStation,
     volunteer_entity_1.Volunteer,
+    trip_analysis_entity_1.TripAnalysis,
 ];
 const useSsl = process.env.DB_SSL === "true";
 let AppModule = class AppModule {

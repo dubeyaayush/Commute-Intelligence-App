@@ -19,6 +19,7 @@ exports.CommuteModule = CommuteModule = __decorate([
         imports: [metro_module_1.MetroModule],
         controllers: [commute_controller_1.CommuteController],
         providers: [commute_service_1.CommuteService],
+        exports: [commute_service_1.CommuteService], // used by IngestModule for post-ingest analysis
     })
 ], CommuteModule);
 //# sourceMappingURL=commute.module.js.map

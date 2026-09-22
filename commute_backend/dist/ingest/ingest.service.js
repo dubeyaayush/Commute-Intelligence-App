@@ -22,13 +22,17 @@ const detected_leg_entity_1 = require("../entities/detected-leg.entity");
 const location_sample_entity_1 = require("../entities/location-sample.entity");
 const sensor_sample_entity_1 = require("../entities/sensor-sample.entity");
 const activity_sample_entity_1 = require("../entities/activity-sample.entity");
+const commute_service_1 = require("../commute/commute.service");
 let IngestService = class IngestService {
-    constructor(ds) {
+    constructor(ds, commute) {
         this.ds = ds;
+        this.commute = commute;
+        this.log = new common_1.Logger('IngestService');
     }
     /// Store one trip + all its rows in ONE transaction. Idempotent on trip id:
     /// re-uploading the same trip clears the old copy first, so a retried upload
-    /// never creates duplicates.
+    /// never creates duplicates. After the raw data is safely stored, the engine
+    /// analysis is computed and persisted (best-effort — never fails the upload).
     async ingest(body) {
         const trip = body.trip;
         const tripId = trip.id;
@@ -40,7 +44,6 @@ let IngestService = class IngestService {
             activity_samples: body.activity_samples?.length ?? 0,
         };
         await this.ds.transaction(async (m) => {
-            // idempotency: remove any prior copy of this trip's children
             for (const table of [
                 'labels',
                 'detected_legs',
@@ -50,7 +53,6 @@ let IngestService = class IngestService {
             ]) {
                 await m.query(`DELETE FROM ${table} WHERE trip_id = $1`, [tripId]);
             }
-            // upsert the trip row
             await m
                 .createQueryBuilder()
                 .insert()
@@ -83,7 +85,6 @@ let IngestService = class IngestService {
                     confidence: d.confidence ?? null,
                 })));
             }
-            // location samples: build the PostGIS point from lng/lat, in chunks
             if (counts.location_samples) {
                 const rows = body.location_samples.map((s) => ({
                     tripId: s.trip_id,
@@ -121,6 +122,16 @@ let IngestService = class IngestService {
                 })));
             }
         });
+        // Raw data is now safely stored. Compute + persist the engine analysis as a
+        // best-effort step — a failure here must NOT fail the upload.
+        if (trip.ended_at) {
+            try {
+                await this.commute.analyzeAndStore(tripId);
+            }
+            catch (e) {
+                this.log.warn(`analysis failed for ${tripId}: ${e?.message ?? e}`);
+            }
+        }
         return { ok: true, trip_id: tripId, received: counts };
     }
     chunk(arr, size) {
@@ -134,6 +145,7 @@ exports.IngestService = IngestService;
 exports.IngestService = IngestService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectDataSource)()),
-    __metadata("design:paramtypes", [typeorm_2.DataSource])
+    __metadata("design:paramtypes", [typeorm_2.DataSource,
+        commute_service_1.CommuteService])
 ], IngestService);
 //# sourceMappingURL=ingest.service.js.map

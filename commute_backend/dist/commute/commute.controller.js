@@ -19,24 +19,34 @@ let CommuteController = class CommuteController {
     constructor(commute) {
         this.commute = commute;
     }
-    // GET /commute/<tripId>
-    // The app's read endpoint: returns the engine's full journey reconstruction
-    // (legs, modes, ride-starts, metro arrivals, confidences).
-    // Auth via the x-api-key header (what the Flutter app sends) OR ?key= in the
-    // query (convenient for opening in a browser while debugging).
+    // GET /commute/reanalyze/all?key=<API_KEY>  — one-time backfill of stored analysis.
+    async reanalyzeAll(req) {
+        this.checkKey(req);
+        return this.commute.reanalyzeAll();
+    }
+    // GET /commute/<tripId>  — the engine's journey (used by the app + dashboard).
     async analyze(id, req) {
-        const provided = req.headers['x-api-key'] ?? req.query.key;
-        if (!process.env.API_KEY || provided !== process.env.API_KEY) {
-            throw new common_1.UnauthorizedException('Invalid or missing API key');
-        }
+        this.checkKey(req);
         const journey = await this.commute.analyze(id);
-        // 404 (not 401) so a client can tell "no such trip" from "bad key".
         if (!journey)
             throw new common_1.NotFoundException(`Trip ${id} not found`);
         return journey;
     }
+    checkKey(req) {
+        const provided = req.headers['x-api-key'] ?? req.query.key;
+        if (!process.env.API_KEY || provided !== process.env.API_KEY) {
+            throw new common_1.UnauthorizedException('Invalid or missing API key');
+        }
+    }
 };
 exports.CommuteController = CommuteController;
+__decorate([
+    (0, common_1.Get)('reanalyze/all'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], CommuteController.prototype, "reanalyzeAll", null);
 __decorate([
     (0, common_1.Get)(':id'),
     __param(0, (0, common_1.Param)('id')),
