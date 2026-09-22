@@ -7,6 +7,7 @@ import { TripsModule } from "./trips/trips.module";
 import { CommuteModule } from "./commute/commute.module";
 import { MetroModule } from "./metro/metro.module";
 import { VolunteersModule } from "./volunteers/volunteers.module";
+import { AdminModule } from "./admin/admin.module";
 import { Trip } from "./entities/trip.entity";
 import { Label } from "./entities/label.entity";
 import { DetectedLeg } from "./entities/detected-leg.entity";
@@ -16,7 +17,6 @@ import { ActivitySample } from "./entities/activity-sample.entity";
 import { MetroStation } from "./metro/metro-station.entity";
 import { Volunteer } from "./volunteers/volunteer.entity";
 import { TripAnalysis } from "./commute/trip-analysis.entity";
-import { AdminModule } from "./admin/admin.module";
 
 const entities = [
   Trip,
@@ -59,11 +59,6 @@ const useSsl = process.env.DB_SSL === "true";
             synchronize: true,
           },
     ),
-    IngestModule,
-    TripsModule,
-    CommuteModule,
-    MetroModule,
-    VolunteersModule,
     IngestModule,
     TripsModule,
     CommuteModule,
