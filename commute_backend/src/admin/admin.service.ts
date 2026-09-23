@@ -90,4 +90,34 @@ export class AdminService {
       manualLabels: labels,
     };
   }
+
+  /// All volunteers with their name, code, and how many trips each recorded.
+  /// LEFT JOIN so volunteers with zero trips still appear, and a trip whose
+  /// code has no volunteer row (older test data) is grouped under that code.
+  async listVolunteers() {
+    const rows = await this.ds.query(
+      `SELECT
+         COALESCE(v.code, t.volunteer_code) AS code,
+         v.name,
+         v.phone,
+         v.city,
+         v.created_at,
+         COUNT(t.id) AS trip_count
+       FROM volunteers v
+       FULL OUTER JOIN trips t ON t.volunteer_code = v.code
+       GROUP BY COALESCE(v.code, t.volunteer_code), v.name, v.phone, v.city, v.created_at
+       ORDER BY trip_count DESC NULLS LAST`,
+    );
+    return {
+      count: rows.length,
+      volunteers: rows.map((r: any) => ({
+        code: r.code,
+        name: r.name ?? null, // null = trips exist but no registered volunteer (old data)
+        phone: r.phone ?? null,
+        city: r.city ?? null,
+        createdAt: r.created_at ?? null,
+        tripCount: Number(r.trip_count) || 0,
+      })),
+    };
+  }
 }
