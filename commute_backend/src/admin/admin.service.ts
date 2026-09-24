@@ -6,9 +6,6 @@ import { DataSource } from 'typeorm';
 export class AdminService {
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
 
-  /// All trips across all volunteers, newest first. Optional filters by
-  /// volunteer code and quality. Reads the flat columns from trip_analysis,
-  /// so it's fast and needs no engine recompute.
   async listTrips(filters: {
     volunteer?: string;
     quality?: string;
@@ -18,11 +15,11 @@ export class AdminService {
     const params: any[] = [];
     if (filters.volunteer) {
       params.push(filters.volunteer);
-      where.push(`volunteer_code = $${params.length}`);
+      where.push(`a.volunteer_code = $${params.length}`);
     }
     if (filters.quality) {
       params.push(filters.quality);
-      where.push(`quality = $${params.length}`);
+      where.push(`a.quality = $${params.length}`);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const limit = Math.min(
@@ -31,12 +28,14 @@ export class AdminService {
     );
 
     const rows = await this.ds.query(
-      `SELECT trip_id, volunteer_code, started_at, ended_at, total_minutes,
-              gps_samples, leg_count, has_metro_arrival, overall_confidence,
-              quality, analyzed_at
-         FROM trip_analysis
+      `SELECT a.trip_id, a.volunteer_code, v.name AS volunteer_name,
+              a.started_at, a.ended_at, a.total_minutes, a.gps_samples,
+              a.leg_count, a.has_metro_arrival, a.overall_confidence,
+              a.quality, a.analyzed_at
+         FROM trip_analysis a
+         LEFT JOIN volunteers v ON v.code = a.volunteer_code
          ${whereSql}
-        ORDER BY started_at DESC NULLS LAST
+        ORDER BY a.started_at DESC NULLS LAST
         LIMIT ${limit}`,
       params,
     );
@@ -47,10 +46,13 @@ export class AdminService {
   /// and the volunteer's manual labels (for the side-by-side comparison).
   async getTrip(tripId: string) {
     const rows = await this.ds.query(
-      `SELECT trip_id, volunteer_code, started_at, ended_at, total_minutes,
-              gps_samples, leg_count, has_metro_arrival, overall_confidence,
-              quality, journey
-         FROM trip_analysis WHERE trip_id = $1`,
+      `SELECT a.trip_id, a.volunteer_code, v.name AS volunteer_name,
+              a.started_at, a.ended_at, a.total_minutes, a.gps_samples,
+              a.leg_count, a.has_metro_arrival, a.overall_confidence,
+              a.quality, a.journey
+         FROM trip_analysis a
+         LEFT JOIN volunteers v ON v.code = a.volunteer_code
+        WHERE a.trip_id = $1`,
       [tripId],
     );
     if (rows.length === 0) return null;
@@ -71,6 +73,7 @@ export class AdminService {
       summary: {
         tripId: a.trip_id,
         volunteerCode: a.volunteer_code,
+        volunteerName: a.volunteer_name ?? null,
         startedAt: a.started_at,
         endedAt: a.ended_at,
         totalMinutes: a.total_minutes,
@@ -80,7 +83,7 @@ export class AdminService {
         overallConfidence: a.overall_confidence,
         quality: a.quality,
       },
-      journey: a.journey, // full engine reconstruction (jsonb → object)
+      journey: a.journey,
       gpsTrack: track.map((r: any) => ({
         t: r.t,
         lat: Number(r.lat),
@@ -92,8 +95,8 @@ export class AdminService {
   }
 
   /// All volunteers with their name, code, and how many trips each recorded.
-  /// LEFT JOIN so volunteers with zero trips still appear, and a trip whose
-  /// code has no volunteer row (older test data) is grouped under that code.
+  /// FULL OUTER JOIN so registered volunteers with zero trips still appear, and
+  /// trips whose code has no volunteer row (older test data) show as unregistered.
   async listVolunteers() {
     const rows = await this.ds.query(
       `SELECT
@@ -112,7 +115,7 @@ export class AdminService {
       count: rows.length,
       volunteers: rows.map((r: any) => ({
         code: r.code,
-        name: r.name ?? null, // null = trips exist but no registered volunteer (old data)
+        name: r.name ?? null,
         phone: r.phone ?? null,
         city: r.city ?? null,
         createdAt: r.created_at ?? null,
