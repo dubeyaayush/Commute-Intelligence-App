@@ -1,39 +1,59 @@
 import 'package:dio/dio.dart';
 
-/// Sends one trip payload to the ingest endpoint. Permanent upload client —
-/// same contract for the throwaway server and the real NestJS backend. Now
-/// sends the API key the backend requires.
+/// Sends completed trips to the backend. One POST per trip to /ingest,
+/// authenticated with the API key. Timeouts are deliberately generous:
+/// a long trip is a large body, and Render free-tier can cold-start.
 class UploadService {
-  UploadService({required this.baseUrl, this.apiKey, Dio? dio})
-      : _dio = dio ?? Dio();
+  UploadService({required String baseUrl, required String apiKey})
+      : _dio = Dio(
+          BaseOptions(
+            baseUrl: baseUrl,
+            connectTimeout: const Duration(seconds: 30),
+            sendTimeout: const Duration(minutes: 5),
+            receiveTimeout: const Duration(minutes: 5),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey, // <-- verify this matches ApiKeyGuard
+            },
+            validateStatus: (s) => s != null && s < 500,
+          ),
+        );
 
-  final String baseUrl;
-  final String? apiKey;
   final Dio _dio;
 
+  /// Upload one trip payload (shape from CaptureRepository.exportTrip).
+  /// Throws a human-readable message on failure.
   Future<void> uploadTrip(Map<String, Object?> payload) async {
-    final Response res;
     try {
-      res = await _dio.post(
-        '$baseUrl/ingest',
-        data: payload,
-        options: Options(
-          headers: {
-            'Content-Type': 'application/json',
-            if (apiKey != null && apiKey!.isNotEmpty) 'x-api-key': apiKey,
-          },
-          sendTimeout: const Duration(seconds: 30),
-          receiveTimeout: const Duration(seconds: 30),
-        ),
-      );
+      final res = await _dio.post('/ingest', data: payload);
+      final code = res.statusCode ?? 0;
+      if (code >= 200 && code < 300) return;
+      if (code == 401 || code == 403) {
+        throw 'Rejected by server (auth). Check the API key.';
+      }
+      if (code == 413) {
+        throw 'Trip too large for the server to accept.';
+      }
+      throw 'Server error ($code). Please try again.';
     } on DioException catch (e) {
-      throw e.response != null
-          ? 'Server error ${e.response?.statusCode}'
-          : 'Cannot reach server: ${e.type.name}';
+      throw 'Cannot reach server: ${_reason(e)}';
     }
-    final code = res.statusCode ?? 0;
-    if (code != 200 && code != 201) {
-      throw 'Server returned $code';
+  }
+
+  String _reason(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+        return 'connectTimeout';
+      case DioExceptionType.sendTimeout:
+        return 'sendTimeout';
+      case DioExceptionType.receiveTimeout:
+        return 'receiveTimeout';
+      case DioExceptionType.connectionError:
+        return 'connectionError';
+      case DioExceptionType.badResponse:
+        return 'HTTP ${e.response?.statusCode}';
+      default:
+        return e.message ?? 'unknown';
     }
   }
 }

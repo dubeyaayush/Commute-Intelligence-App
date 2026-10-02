@@ -20,8 +20,9 @@ export class IngestService {
 
   /// Store one trip + all its rows in ONE transaction. Idempotent on trip id:
   /// re-uploading the same trip clears the old copy first, so a retried upload
-  /// never creates duplicates. After the raw data is safely stored, the engine
-  /// analysis is computed and persisted (best-effort — never fails the upload).
+  /// never creates duplicates. Once the raw data is committed we return
+  /// immediately; the engine analysis runs in the background so a long trip
+  /// never holds the HTTP response open (which was causing receiveTimeout).
   async ingest(body: any) {
     const trip = body.trip;
     const tripId = trip.id as string;
@@ -132,14 +133,16 @@ export class IngestService {
       }
     });
 
-    // Raw data is now safely stored. Compute + persist the engine analysis as a
-    // best-effort step — a failure here must NOT fail the upload.
+    // Raw data is committed. Run the engine analysis in the BACKGROUND so the
+    // response returns now — a long trip's analysis must not block the upload.
     if (trip.ended_at) {
-      try {
-        await this.commute.analyzeAndStore(tripId);
-      } catch (e: any) {
-        this.log.warn(`analysis failed for ${tripId}: ${e?.message ?? e}`);
-      }
+      setImmediate(() => {
+        this.commute
+          .analyzeAndStore(tripId)
+          .catch((e: any) =>
+            this.log.warn(`analysis failed for ${tripId}: ${e?.message ?? e}`),
+          );
+      });
     }
 
     return { ok: true, trip_id: tripId, received: counts };
