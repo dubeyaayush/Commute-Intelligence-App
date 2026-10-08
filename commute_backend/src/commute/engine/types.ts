@@ -1,15 +1,9 @@
-/// Shared types for the Commute Intelligence Engine outputs.
-
 export type LegKind = 'walking' | 'moving' | 'waiting' | 'stopped';
 
 export interface LegMode {
-  // Reported mode. 'vehicle' = the engine will not commit to a specific mode
-  // (naming is disabled until calibration). Otherwise a specific mode.
   label: 'vehicle' | 'e-rickshaw' | 'car' | 'metro';
-  // Best guess regardless of the naming threshold — always one of the three.
-  // Visible for tuning: "vehicle (leaning car)".
   lean: 'e-rickshaw' | 'car' | 'metro';
-  confidence: number; // 0..1 = normalized share of the leaning mode
+  confidence: number;
   scores: Record<string, number>;
   features: {
     medKmh: number;
@@ -18,6 +12,11 @@ export interface LegMode {
     turnPerMin: number;
     stopFrac: number;
   };
+}
+
+export interface StationRef {
+  name: string;
+  distanceM: number;
 }
 
 export interface Leg {
@@ -30,6 +29,12 @@ export interface Leg {
   confidence: number | null;
   evidence?: Record<string, number | null | boolean>;
   mode?: LegMode;
+  // How many seconds of in-ride traffic stops were folded into this leg by the
+  // merge pass (0 when none). Lets the dashboard say "incl. 2m stopped".
+  stoppedSeconds?: number;
+  // For metro legs: nearest station to the leg's start / end, when within range.
+  entryStation?: StationRef | null;
+  exitStation?: StationRef | null;
 }
 
 export interface Journey {
@@ -47,27 +52,10 @@ export interface Journey {
   limitations: string[];
 }
 
-export interface RawSample {
-  t: number;
-  speed: number;
-}
-
-export interface ActivitySample {
-  t: number;
-  type: string;
-  conf: string;
-}
-
-export interface AccelSample {
-  t: number;
-  mag: number;
-}
-
-export interface PositionSample {
-  t: number;
-  lat: number;
-  lng: number;
-}
+export interface RawSample { t: number; speed: number; }
+export interface ActivitySample { t: number; type: string; conf: string; }
+export interface AccelSample { t: number; mag: number; }
+export interface PositionSample { t: number; lat: number; lng: number; }
 
 export interface RideStartEvent {
   at: string;

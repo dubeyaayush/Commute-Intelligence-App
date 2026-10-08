@@ -6,14 +6,18 @@ import { scoreWalking } from './engine/walking';
 import { detectRideStarts } from './engine/ride_start';
 import { classifyStill } from './engine/waiting';
 import { classifyMode } from './engine/mode';
+import { mergeTrafficStops } from './engine/merge';
 import { MetroArrivalService } from '../metro/metro-arrival.service';
+import { CONFIG } from './engine/config';
 import {
   AccelSample,
   ActivitySample,
   Journey,
   Leg,
+  LegKind,
   PositionSample,
   RawSample,
+  StationRef,
 } from './engine/types';
 
 function finite(v: any, fallback = 0): number {
@@ -84,7 +88,8 @@ export class CommuteService {
 
     const runs = segment(samples, activity);
 
-    const legs: Leg[] = runs.map((run) => {
+    // 1) initial legs: still → stopped; moving → walking/moving (now accel-aware)
+    let legs: Leg[] = runs.map((run) => {
       const seg = samples.filter((s) => s.t >= run.startT && s.t <= run.endT);
       const speeds = seg.length ? seg.map((s) => s.speed) : [0];
       const medMs = median(speeds);
@@ -93,14 +98,14 @@ export class CommuteService {
       if (run.state === 'still') {
         return this.leg('stopped', run, medMs, maxMs, null);
       }
-      const v = scoreWalking(medMs, run.startT, run.endT, activity);
+      const v = scoreWalking(medMs, run.startT, run.endT, activity, accel);
       return this.leg(
         v.isWalking ? 'walking' : 'moving',
         run,
         medMs,
         maxMs,
         v.confidence,
-        { speedScore: v.speedScore, activityScore: v.activityScore },
+        { speedScore: v.speedScore, activityScore: v.activityScore, cadenceScore: v.cadenceScore },
       );
     });
 
@@ -113,6 +118,80 @@ export class CommuteService {
         ) / 10
       : null;
 
+    // 2) ride-starts (pre-merge) feed the waiting boost
+    const preRideStarts = detectRideStarts(
+      legs.map((l) => ({
+        kind: l.kind,
+        startT: new Date(l.startedAt).getTime(),
+        endT: new Date(l.endedAt).getTime(),
+        medianKmh: l.medianSpeedKmh,
+      })),
+      accel,
+    );
+    const preRideStartMs = new Set(preRideStarts.map((e) => new Date(e.at).getTime()));
+
+    // 3) interior stills → waiting
+    for (let i = 0; i < legs.length; i++) {
+      if (legs[i].kind !== 'stopped' || legs[i].confidence !== null) continue;
+      const v = classifyStill(legs, i, positions, preRideStartMs);
+      legs[i].kind = v.kind;
+      legs[i].confidence = v.confidence;
+      legs[i].evidence = v.evidence as any;
+    }
+
+    // 4) fold in-ride traffic stops back into their ride. Long interior stops
+    //    (> trafficStopMaxSec) only merge when they are NOT near any station —
+    //    a long jam on the road, as opposed to a transfer wait at a stop.
+    const notNearStation = await this.longStopsNotNearStation(legs, positions);
+    legs = mergeTrafficStops(legs, samples, {
+      forceMergeLongStop: (_prev: LegKind, still: Leg) => notNearStation.has(still.startedAt),
+    });
+
+    // 5) classify mode on each (merged) moving leg, and set the HEADLINE
+    //    confidence from the right detector per leg kind.
+    for (const leg of legs) {
+      if (leg.kind === 'moving') {
+        leg.mode = classifyMode(
+          new Date(leg.startedAt).getTime(),
+          new Date(leg.endedAt).getTime(),
+          samples,
+          accel,
+          positions,
+        );
+        // Vehicle legs report MODE confidence, not the walking score (the old
+        // "0% conf" was the walking detector's score shown on a vehicle leg).
+        leg.confidence = leg.mode.confidence;
+      } else if (leg.kind === 'walking' && leg.confidence == null) {
+        // merged walk → recompute walking confidence over the new span
+        const medMs = median(
+          samples
+            .filter((s) => s.t >= new Date(leg.startedAt).getTime() && s.t <= new Date(leg.endedAt).getTime())
+            .map((s) => s.speed),
+        );
+        leg.confidence = scoreWalking(
+          medMs,
+          new Date(leg.startedAt).getTime(),
+          new Date(leg.endedAt).getTime(),
+          activity,
+          accel,
+        ).confidence;
+      }
+    }
+
+    // 6) metro entry/exit stations — snap each metro-leaning leg's first/last
+    //    fix to the nearest station, so the dashboard shows where the metro was
+    //    boarded and left even when the line is elevated (no GPS gap to detect).
+    for (const leg of legs) {
+      if (leg.kind !== 'moving' || leg.mode?.lean !== 'metro') continue;
+      const within = positions.filter(
+        (p) => p.t >= new Date(leg.startedAt).getTime() && p.t <= new Date(leg.endedAt).getTime(),
+      );
+      if (within.length < 2) continue;
+      leg.entryStation = await this.snapStation(within[0]);
+      leg.exitStation = await this.snapStation(within[within.length - 1]);
+    }
+
+    // 7) ride-starts recomputed on the merged legs (real transfer→ride points)
     const rideStarts = detectRideStarts(
       legs.map((l) => ({
         kind: l.kind,
@@ -122,26 +201,6 @@ export class CommuteService {
       })),
       accel,
     );
-
-    const rideStartAtMs = new Set(rideStarts.map((e) => new Date(e.at).getTime()));
-    for (let i = 0; i < legs.length; i++) {
-      if (legs[i].kind !== 'stopped' || legs[i].confidence !== null) continue;
-      const v = classifyStill(legs, i, positions, rideStartAtMs);
-      legs[i].kind = v.kind;
-      legs[i].confidence = v.confidence;
-      legs[i].evidence = v.evidence as any;
-    }
-
-    for (const leg of legs) {
-      if (leg.kind !== 'moving') continue;
-      leg.mode = classifyMode(
-        new Date(leg.startedAt).getTime(),
-        new Date(leg.endedAt).getTime(),
-        samples,
-        accel,
-        positions,
-      );
-    }
 
     const metroArrivals = await this.metroArrivals.detectArrivals(
       positions.map((p) => ({ t: p.t, lat: p.lat, lng: p.lng })),
@@ -158,10 +217,11 @@ export class CommuteService {
       events: { rideStarts, metroArrivals },
       limitations: [
         'Track A: walking (3), waiting (4), ride-start (5), mode (6).',
-        'Step 1 (metro arrival) live via OSM station geofences.',
+        'In-ride traffic stops are folded into the ride (merge step).',
+        'Metro entry/exit stations are snapped from leg endpoints to the nearest',
+        'station geofence; gap-based metro arrival still needs an underground GPS gap.',
         'mode secondary thresholds are defaults — need multi-trip calibration.',
         'exit gate (2) and office (7) not built — need collected coordinates.',
-        'validated on few trips so far — needs real multi-leg commutes.',
       ],
     };
   }
@@ -179,7 +239,10 @@ export class CommuteService {
       ? +(confs.reduce((a, b) => a + b, 0) / confs.length).toFixed(2)
       : null;
 
-    // Data-quality flag (starting heuristics; tune as real data arrives).
+    const hasMetro =
+      journey.events.metroArrivals.length > 0 ||
+      journey.legs.some((l) => l.mode?.lean === 'metro' && (l.entryStation || l.exitStation));
+
     let quality = 'ok';
     if (journey.legs.length === 0) quality = 'empty';
     else if (journey.gpsSamples < 20) quality = 'sparse';
@@ -210,7 +273,7 @@ export class CommuteService {
         journey.totalMinutes,
         journey.gpsSamples,
         journey.legs.length,
-        journey.events.metroArrivals.length > 0,
+        hasMetro,
         overall,
         quality,
         JSON.stringify(journey),
@@ -219,8 +282,7 @@ export class CommuteService {
     return journey;
   }
 
-  /// Backfill: re-analyze and store every completed trip. One-time use to
-  /// populate analysis for trips uploaded before persistence existed.
+  /// Backfill: re-analyze and store every completed trip.
   async reanalyzeAll(): Promise<{ analyzed: number; skipped: number }> {
     const rows = await this.ds.query(
       `SELECT id FROM trips WHERE ended_at IS NOT NULL ORDER BY started_at`,
@@ -238,6 +300,59 @@ export class CommuteService {
       }
     }
     return { analyzed, skipped };
+  }
+
+  // --- station helpers (PostGIS) ---
+
+  /// For each interior still longer than the traffic-stop window but flanked by
+  /// two vehicle legs, decide if it is NOT near any station (→ a long road jam
+  /// to be merged). Returns the set of such stills' startedAt ISO strings.
+  private async longStopsNotNearStation(
+    legs: Leg[],
+    positions: PositionSample[],
+  ): Promise<Set<string>> {
+    const out = new Set<string>();
+    for (let i = 1; i < legs.length - 1; i++) {
+      const mid = legs[i];
+      const still = mid.kind === 'waiting' || mid.kind === 'stopped';
+      const flankedVehicle = legs[i - 1].kind === 'moving' && legs[i + 1].kind === 'moving';
+      if (!still || !flankedVehicle) continue;
+      if (mid.seconds <= CONFIG.merge.trafficStopMaxSec || mid.seconds > CONFIG.merge.hardMaxSec) continue;
+
+      const pts = positions.filter(
+        (p) => p.t >= new Date(mid.startedAt).getTime() && p.t <= new Date(mid.endedAt).getTime(),
+      );
+      if (pts.length === 0) continue;
+      const lat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
+      const lng = pts.reduce((s, p) => s + p.lng, 0) / pts.length;
+      if (!(await this.isNearAnyStation(lng, lat))) out.add(mid.startedAt);
+    }
+    return out;
+  }
+
+  /// Nearest station to a point within the snap radius, or null.
+  private async snapStation(p: PositionSample): Promise<StationRef | null> {
+    const rows = await this.ds.query(
+      `WITH q AS (SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS g)
+       SELECT name, ST_Distance(center, q.g) AS dist_m
+         FROM metro_stations, q
+        WHERE ST_DWithin(center, q.g, $3)
+        ORDER BY dist_m ASC
+        LIMIT 1`,
+      [p.lng, p.lat, CONFIG.metroStations.snapRadiusM],
+    );
+    if (rows.length === 0) return null;
+    return { name: rows[0].name, distanceM: +Number(rows[0].dist_m).toFixed(1) };
+  }
+
+  private async isNearAnyStation(lng: number, lat: number): Promise<boolean> {
+    const rows = await this.ds.query(
+      `WITH q AS (SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS g)
+       SELECT 1 FROM metro_stations, q
+        WHERE ST_DWithin(center, q.g, radius_m) LIMIT 1`,
+      [lng, lat],
+    );
+    return rows.length > 0;
   }
 
   private leg(
